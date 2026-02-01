@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Electricity Data Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); padding: 1.5rem; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-2px); }
+        .chart-container { position: relative; height: 300px; width: 100%; }
+        .loader { border-top-color: #3498db; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+    </style>
+</head>
+<body class="text-gray-800 h-screen flex flex-col md:flex-row overflow-hidden">
+
+    <aside class="w-full md:w-64 bg-white shadow-md flex-shrink-0 flex flex-col h-full overflow-y-auto z-20">
+        <div class="p-6 border-b border-gray-100">
+            <h1 class="text-2xl font-bold text-blue-600 flex items-center gap-2">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                ElectroDash
+            </h1>
+            <p class="text-xs text-gray-500 mt-1">Thailand Electricity Analytics</p>
+        </div>
+
+        <div class="p-6 space-y-6">
+            <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <h3 class="font-semibold text-sm text-blue-800 mb-2">Data Source</h3>
+                <p class="text-xs text-gray-600 mb-3">Load <strong>electricity_usages_en.json</strong> and <strong>electricity_users_en.json</strong></p>
+                <input type="file" id="fileInput" multiple accept=".json" class="block w-full text-xs text-gray-500 file:mr-2 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"/>
+                <p id="loadStatus" class="text-xs text-orange-500 mt-2 font-medium">Waiting for files...</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Year</label>
+                <select id="yearFilter" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                    <option value="all">All Years</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Province</label>
+                <select id="provinceFilter" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+                    <option value="all">All Provinces</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="mt-auto p-6 border-t border-gray-100 text-xs text-gray-400">
+            Path: /Users/7373r/Desktop/Study/MU/git2
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col h-full overflow-hidden relative">
+        <header class="bg-white shadow-sm p-4 flex justify-between items-center z-10">
+            <h2 class="text-xl font-semibold text-gray-700" id="dashboardTitle">Dashboard Overview</h2>
+            <div class="text-sm text-gray-500" id="lastUpdated">Select files to begin</div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-4 md:p-8" id="dashboardContent" style="opacity: 0.5; pointer-events: none;">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="card border-l-4 border-blue-500">
+                    <div class="text-gray-500 text-sm font-medium">Total Usage</div>
+                    <div class="text-2xl font-bold text-gray-800 mt-1" id="kpiUsage">-</div>
+                    <div class="text-xs text-gray-400 mt-1">Million kWh</div>
+                </div>
+                <div class="card border-l-4 border-green-500">
+                    <div class="text-gray-500 text-sm font-medium">Total Users</div>
+                    <div class="text-2xl font-bold text-gray-800 mt-1" id="kpiUsers">-</div>
+                    <div class="text-xs text-gray-400 mt-1">Households & Businesses</div>
+                </div>
+                <div class="card border-l-4 border-purple-500">
+                    <div class="text-gray-500 text-sm font-medium">Avg Usage / User</div>
+                    <div class="text-2xl font-bold text-gray-800 mt-1" id="kpiAvg">-</div>
+                    <div class="text-xs text-gray-400 mt-1">kWh per user</div>
+                </div>
+                <div class="card border-l-4 border-orange-500">
+                    <div class="text-gray-500 text-sm font-medium">EV Charging Usage</div>
+                    <div class="text-2xl font-bold text-gray-800 mt-1" id="kpiEv">-</div>
+                    <div class="text-xs text-gray-400 mt-1">Total kWh</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <div class="card col-span-1 lg:col-span-2">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-4">Usage Trends by Year</h3>
+                    <div class="chart-container">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-4">Usage by Sector</h3>
+                    <div class="chart-container">
+                        <canvas id="sectorChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="card">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-4">Top 10 Provinces (Electricity Usage)</h3>
+                    <div class="chart-container">
+                        <canvas id="provinceChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-4">User Count by Business Type</h3>
+                    <div class="chart-container">
+                        <canvas id="userTypeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <footer class="mt-8 text-center text-xs text-gray-400 pb-4">
+                Generated based on data from Sheet1
+            </footer>
+        </div>
+    </main>
+
+    <script>
+        // Global State
+        let rawUsageData = [];
+        let rawUserData = [];
+        let charts = {};
+
+        // --- 1. Initialization & Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Attempt auto-load (will likely fail due to CORS if opened directly, but works on server)
+            attemptAutoFetch();
+
+            // File Input Listener
+            document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+
+            // Filter Listeners
+            document.getElementById('yearFilter').addEventListener('change', updateDashboard);
+            document.getElementById('provinceFilter').addEventListener('change', updateDashboard);
+        });
+
+        // --- 2. Data Loading Logic ---
+
+        function attemptAutoFetch() {
+            const files = ['electricity_usages_en.json', 'electricity_users_en.json'];
+            Promise.all(files.map(url => fetch(url).then(res => res.json())))
+            .then(data => {
+                processLoadedData(data[0], data[1]);
+                document.getElementById('loadStatus').innerHTML = '<span class="text-green-600">Auto-loaded successfully!</span>';
+            })
+            .catch(err => {
+                console.log("Auto-fetch failed (CORS or missing file), waiting for upload.");
+                // We do nothing, waiting for user input
+            });
+        }
+
+        function handleFileUpload(event) {
+            const files = event.target.files;
+            if (files.length < 2) {
+                alert("Please select BOTH json files.");
+                return;
+            }
+
+            let usageFile = null;
+            let userFile = null;
+
+            // Identify files by name
+            for (let i = 0; i < files.length; i++) {
+                if (files[i].name.includes('usages')) usageFile = files[i];
+                if (files[i].name.includes('users')) userFile = files[i];
+            }
+
+            if (!usageFile || !userFile) {
+                alert("Could not identify files. Please ensure filenames contain 'usages' and 'users'.");
+                return;
+            }
+
+            const p1 = new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(JSON.parse(e.target.result));
+                reader.readAsText(usageFile);
+            });
+
+            const p2 = new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(JSON.parse(e.target.result));
+                reader.readAsText(userFile);
+            });
+
+            Promise.all([p1, p2]).then(data => {
+                processLoadedData(data[0], data[1]);
+                document.getElementById('loadStatus').innerHTML = '<span class="text-green-600">Files Loaded!</span>';
+            });
+        }
+
+        function processLoadedData(usageJson, userJson) {
+            // Handle structure variations (e.g., if wrapped in "Sheet1")
+            rawUsageData = Array.isArray(usageJson) ? usageJson : (usageJson.Sheet1 || Object.values(usageJson)[0]);
+            rawUserData = Array.isArray(userJson) ? userJson : (userJson.Sheet1 || Object.values(userJson)[0]); // In case structure differs, though user provided array
+
+            // Unlock UI
+            document.getElementById('dashboardContent').style.opacity = '1';
+            document.getElementById('dashboardContent').style.pointerEvents = 'auto';
+            document.getElementById('lastUpdated').innerText = 'Data Loaded';
+
+            populateFilters();
+            updateDashboard();
+        }
+
+        // --- 3. Filter Logic ---
+
+        function populateFilters() {
+            const years = [...new Set(rawUsageData.map(d => d.year))].sort();
+            const provinces = [...new Set(rawUsageData.map(d => d.province_name))].sort();
+
+            const yearSelect = document.getElementById('yearFilter');
+            const provSelect = document.getElementById('provinceFilter');
+
+            // Reset
+            yearSelect.innerHTML = '<option value="all">All Years</option>';
+            provSelect.innerHTML = '<option value="all">All Provinces</option>';
+
+            years.forEach(y => {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.text = y;
+                yearSelect.appendChild(opt);
+            });
+            // Select latest year by default
+            if(years.length > 0) yearSelect.value = years[years.length-1];
+
+            provinces.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.text = p;
+                provSelect.appendChild(opt);
+            });
+        }
+
+        function getFilteredData() {
+            const selYear = document.getElementById('yearFilter').value;
+            const selProv = document.getElementById('provinceFilter').value;
+
+            const filteredUsage = rawUsageData.filter(d => 
+                (selYear === 'all' || d.year == selYear) &&
+                (selProv === 'all' || d.province_name === selProv)
+            );
+
+            const filteredUsers = rawUserData.filter(d => 
+                (selYear === 'all' || d.year == selYear) &&
+                (selProv === 'all' || d.province_name === selProv)
+            );
+
+            return { usage: filteredUsage, users: filteredUsers };
+        }
+
+        // --- 4. Dashboard Updates ---
+
+        function updateDashboard() {
+            const data = getFilteredData();
+            updateKPIs(data);
+            updateCharts(data);
+        }
+
+        function updateKPIs({ usage, users }) {
+            // Helper to sum a key safely
+            const sum = (arr, key) => arr.reduce((acc, curr) => acc + (parseFloat(curr[key]) || 0), 0);
+
+            // 1. Total Usage (all kwh columns)
+            const kwhKeys = [
+                'residential_kwh', 'small_business_kwh', 'medium_business_kwh', 'large_business_kwh', 
+                'specialized_business_kwh', 'public_electricity_kwh', 'government_state_enterprise_kwh', 
+                'ev_charging_kwh', 'water_pumping_kwh', 'temporary_electricity_kwh'
+            ];
+            
+            let totalKwh = 0;
+            usage.forEach(row => {
+                kwhKeys.forEach(key => totalKwh += (parseFloat(row[key]) || 0));
+            });
+
+            // 2. Total Users
+            const userKeys = [
+                'residential_count', 'small_business_count', 'medium_business_count', 'large_business_count',
+                'specialized_business_count', 'government_state_enterprise_count'
+            ];
+            let totalUsers = 0;
+            users.forEach(row => {
+                userKeys.forEach(key => totalUsers += (parseInt(row[key]) || 0));
+            });
+
+            // 3. EV Specific
+            const evKwh = sum(usage, 'ev_charging_kwh');
+
+            // Render
+            document.getElementById('kpiUsage').innerText = (totalKwh / 1000000).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' M';
+            document.getElementById('kpiUsers').innerText = totalUsers.toLocaleString();
+            document.getElementById('kpiAvg').innerText = totalUsers > 0 ? (totalKwh / totalUsers).toLocaleString(undefined, { maximumFractionDigits: 0 }) : 0;
+            document.getElementById('kpiEv').innerText = evKwh.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        }
+
+        // --- 5. Chart Rendering ---
+
+        function updateCharts({ usage, users }) {
+            const colors = {
+                blue: '#3b82f6', green: '#10b981', purple: '#8b5cf6', orange: '#f97316', gray: '#9ca3af'
+            };
+
+            // --- A. Sector Chart Data Preparation ---
+            const sectors = {
+                'Residential': 0,
+                'Small Biz': 0,
+                'Medium Biz': 0,
+                'Large Biz': 0,
+                'Gov/Public': 0,
+                'Others': 0
+            };
+            usage.forEach(d => {
+                sectors['Residential'] += d.residential_kwh || 0;
+                sectors['Small Biz'] += d.small_business_kwh || 0;
+                sectors['Medium Biz'] += d.medium_business_kwh || 0;
+                sectors['Large Biz'] += d.large_business_kwh || 0;
+                sectors['Gov/Public'] += (d.public_electricity_kwh || 0) + (d.government_state_enterprise_kwh || 0);
+                sectors['Others'] += (d.ev_charging_kwh || 0) + (d.water_pumping_kwh || 0) + (d.temporary_electricity_kwh || 0);
+            });
+
+            // --- B. Trend Chart Data Preparation (Aggregate by Year) ---
+            // We use raw data to calculate trends regardless of year filter, but respect province filter
+            const selProv = document.getElementById('provinceFilter').value;
+            const trendMap = {};
+            rawUsageData.forEach(d => {
+                if (selProv === 'all' || d.province_name === selProv) {
+                    if (!trendMap[d.year]) trendMap[d.year] = 0;
+                    // Sum all relevant usage columns roughly
+                    const totalRow = (d.residential_kwh||0) + (d.small_business_kwh||0) + (d.medium_business_kwh||0) + (d.large_business_kwh||0) + (d.specialized_business_kwh||0);
+                    trendMap[d.year] += totalRow;
+                }
+            });
+            const sortedYears = Object.keys(trendMap).sort();
+            const trendValues = sortedYears.map(y => trendMap[y] / 1000000); // in Millions
+
+            // --- C. Top Provinces (Bar) ---
+            // Aggregate usage by province from the filtered set
+            const provMap = {};
+            usage.forEach(d => {
+                const total = (d.residential_kwh||0) + (d.small_business_kwh||0) + (d.medium_business_kwh||0) + (d.large_business_kwh||0);
+                if (!provMap[d.province_name]) provMap[d.province_name] = 0;
+                provMap[d.province_name] += total;
+            });
+            // Sort top 10
+            const topProvs = Object.entries(provMap).sort((a,b) => b[1] - a[1]).slice(0, 10);
+            
+            // --- D. User Types (Aggregated from users data) ---
+            const userTypes = {
+                'Residential': 0,
+                'Small Biz': 0,
+                'Medium Biz': 0,
+                'Large Biz': 0
+            };
+            users.forEach(d => {
+                userTypes['Residential'] += d.residential_count || 0;
+                userTypes['Small Biz'] += d.small_business_count || 0;
+                userTypes['Medium Biz'] += d.medium_business_count || 0;
+                userTypes['Large Biz'] += d.large_business_count || 0;
+            });
+
+            // --- RENDER CHARTS ---
+
+            // 1. Sector Chart (Doughnut)
+            renderChart('sectorChart', 'doughnut', {
+                labels: Object.keys(sectors),
+                datasets: [{
+                    data: Object.values(sectors),
+                    backgroundColor: [colors.blue, '#60a5fa', '#93c5fd', '#1e40af', colors.green, colors.gray]
+                }]
+            }, { plugins: { legend: { position: 'right' } } });
+
+            // 2. Trend Chart (Line)
+            renderChart('trendChart', 'line', {
+                labels: sortedYears,
+                datasets: [{
+                    label: 'Total Usage (Million kWh)',
+                    data: trendValues,
+                    borderColor: colors.purple,
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            });
+
+            // 3. Province Chart (Bar)
+            renderChart('provinceChart', 'bar', {
+                labels: topProvs.map(x => x[0]),
+                datasets: [{
+                    label: 'Electricity Usage (kWh)',
+                    data: topProvs.map(x => x[1]),
+                    backgroundColor: colors.blue
+                }]
+            }, { indexAxis: 'y' }); // Horizontal bar
+
+            // 4. User Type Chart (Bar - Logarithmic maybe due to huge diff?)
+            // We'll use a standard bar but Residential dwarfs everything, so maybe exclude it or handle scale?
+            // Let's just show Business Breakdown to make it useful
+            renderChart('userTypeChart', 'bar', {
+                labels: ['Small Biz', 'Medium Biz', 'Large Biz'],
+                datasets: [{
+                    label: 'Number of Users',
+                    data: [userTypes['Small Biz'], userTypes['Medium Biz'], userTypes['Large Biz']],
+                    backgroundColor: [colors.orange, colors.green, colors.purple]
+                }]
+            });
+        }
+
+        function renderChart(canvasId, type, data, options = {}) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            
+            // Destroy existing if exists
+            if (charts[canvasId]) {
+                charts[canvasId].destroy();
+            }
+
+            const defaultOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: type !== 'bar' } // hide legend for simple bars
+                }
+            };
+
+            charts[canvasId] = new Chart(ctx, {
+                type: type,
+                data: data,
+                options: { ...defaultOptions, ...options }
+            });
+        }
+    </script>
+</body>
+</html>
